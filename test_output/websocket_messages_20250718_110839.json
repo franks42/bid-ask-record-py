@@ -1,0 +1,432 @@
+[
+  {
+    "timestamp": "2025-07-18T11:06:30.122114",
+    "data": {
+      "channelUuid": "17ef10d0-a82e-41e2-8bd1-26f7a967a816",
+      "asks": [
+        {
+          "price": "0.031",
+          "quantity": "260237.169",
+          "total": "260237.169",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.032",
+          "quantity": "295000.829",
+          "total": "555237.998",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.033",
+          "quantity": "200000.000",
+          "total": "755237.998",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.034",
+          "quantity": "148000.000",
+          "total": "903237.998",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.035",
+          "quantity": "328571.428",
+          "total": "1231809.426",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.036",
+          "quantity": "219444.444",
+          "total": "1451253.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.037",
+          "quantity": "100000.000",
+          "total": "1551253.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.038",
+          "quantity": "100000.000",
+          "total": "1651253.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.039",
+          "quantity": "100000.000",
+          "total": "1751253.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.040",
+          "quantity": "162500.000",
+          "total": "1913753.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.041",
+          "quantity": "100000.000",
+          "total": "2013753.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.042",
+          "quantity": "100000.000",
+          "total": "2113753.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.043",
+          "quantity": "100000.000",
+          "total": "2213753.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.044",
+          "quantity": "100000.000",
+          "total": "2313753.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.045",
+          "quantity": "55555.555",
+          "total": "2369309.425",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.047",
+          "quantity": "2127.659",
+          "total": "2371437.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.058",
+          "quantity": "250000.000",
+          "total": "2621437.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.080",
+          "quantity": "1250.000",
+          "total": "2622687.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.500",
+          "quantity": "10000.000",
+          "total": "2632687.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "1.300",
+          "quantity": "450000.000",
+          "total": "3082687.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "133.334",
+          "quantity": "750.000",
+          "total": "3083437.084",
+          "totalOrders": "0"
+        }
+      ],
+      "bids": [
+        {
+          "price": "0.030",
+          "quantity": "18.333",
+          "total": "18.333",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.029",
+          "quantity": "237.524",
+          "total": "255.857",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.028",
+          "quantity": "7964.285",
+          "total": "8220.142",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.025",
+          "quantity": "803693.324",
+          "total": "811913.466",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.024",
+          "quantity": "55650.123",
+          "total": "867563.589",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.022",
+          "quantity": "135478.888",
+          "total": "1003042.477",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.021",
+          "quantity": "95238.095",
+          "total": "1098280.572",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.020",
+          "quantity": "25000.000",
+          "total": "1123280.572",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.019",
+          "quantity": "52631.578",
+          "total": "1175912.150",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.018",
+          "quantity": "55555.555",
+          "total": "1231467.705",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.017",
+          "quantity": "300000.000",
+          "total": "1531467.705",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.016",
+          "quantity": "703375.000",
+          "total": "2234842.705",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.015",
+          "quantity": "33333.333",
+          "total": "2268176.038",
+          "totalOrders": "0"
+        }
+      ],
+      "channel": "ORDER_BOOK"
+    }
+  },
+  {
+    "timestamp": "2025-07-18T11:06:40.659473",
+    "data": {
+      "channelUuid": "17ef10d0-a82e-41e2-8bd1-26f7a967a816",
+      "asks": [
+        {
+          "price": "0.031",
+          "quantity": "260225.169",
+          "total": "260225.169",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.032",
+          "quantity": "295000.829",
+          "total": "555225.998",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.033",
+          "quantity": "200000.000",
+          "total": "755225.998",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.034",
+          "quantity": "148000.000",
+          "total": "903225.998",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.035",
+          "quantity": "328571.428",
+          "total": "1231797.426",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.036",
+          "quantity": "219444.444",
+          "total": "1451241.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.037",
+          "quantity": "100000.000",
+          "total": "1551241.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.038",
+          "quantity": "100000.000",
+          "total": "1651241.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.039",
+          "quantity": "100000.000",
+          "total": "1751241.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.040",
+          "quantity": "162500.000",
+          "total": "1913741.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.041",
+          "quantity": "100000.000",
+          "total": "2013741.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.042",
+          "quantity": "100000.000",
+          "total": "2113741.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.043",
+          "quantity": "100000.000",
+          "total": "2213741.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.044",
+          "quantity": "100000.000",
+          "total": "2313741.870",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.045",
+          "quantity": "55555.555",
+          "total": "2369297.425",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.047",
+          "quantity": "2127.659",
+          "total": "2371425.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.058",
+          "quantity": "250000.000",
+          "total": "2621425.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.080",
+          "quantity": "1250.000",
+          "total": "2622675.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.500",
+          "quantity": "10000.000",
+          "total": "2632675.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "1.300",
+          "quantity": "450000.000",
+          "total": "3082675.084",
+          "totalOrders": "0"
+        },
+        {
+          "price": "133.334",
+          "quantity": "750.000",
+          "total": "3083425.084",
+          "totalOrders": "0"
+        }
+      ],
+      "bids": [
+        {
+          "price": "0.030",
+          "quantity": "18.333",
+          "total": "18.333",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.029",
+          "quantity": "237.524",
+          "total": "255.857",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.028",
+          "quantity": "7964.285",
+          "total": "8220.142",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.025",
+          "quantity": "803693.324",
+          "total": "811913.466",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.024",
+          "quantity": "55650.123",
+          "total": "867563.589",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.022",
+          "quantity": "135478.888",
+          "total": "1003042.477",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.021",
+          "quantity": "95238.095",
+          "total": "1098280.572",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.020",
+          "quantity": "25000.000",
+          "total": "1123280.572",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.019",
+          "quantity": "52631.578",
+          "total": "1175912.150",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.018",
+          "quantity": "55555.555",
+          "total": "1231467.705",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.017",
+          "quantity": "300000.000",
+          "total": "1531467.705",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.016",
+          "quantity": "703375.000",
+          "total": "2234842.705",
+          "totalOrders": "0"
+        },
+        {
+          "price": "0.015",
+          "quantity": "33333.333",
+          "total": "2268176.038",
+          "totalOrders": "0"
+        }
+      ],
+      "channel": "ORDER_BOOK"
+    }
+  }
+]
