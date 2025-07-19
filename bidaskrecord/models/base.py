@@ -70,8 +70,16 @@ def get_db() -> Generator[db_session_type, None, None]:
     db = SessionFactory()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
+
+
+def get_db_context():
+    """Get a database session context manager for proper transaction handling."""
+    return SessionFactory()
 
 
 class BaseModel(DeclarativeBase):

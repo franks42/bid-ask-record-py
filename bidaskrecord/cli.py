@@ -67,7 +67,7 @@ def record(ctx: click.Context, symbols: List[str], daemon: bool) -> None:
         try:
             # Connect and subscribe to symbols
             await client.connect()
-            await client.subscribe(list(symbols))
+            await client.subscribe(list(symbols), ["ORDER_BOOK", "TRADES"])
             logger.info(f"Recording data for symbols: {', '.join(symbols)}")
 
             # Keep the application running

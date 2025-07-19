@@ -38,10 +38,45 @@ class Settings(BaseSettings):
         5, env="WEBSOCKET_RECONNECT_DELAY", description="Reconnection delay in seconds"
     )
     WEBSOCKET_MAX_RETRIES: int = Field(
-        10,
+        -1,
         env="WEBSOCKET_MAX_RETRIES",
-        description="Maximum number of connection retries",
+        description="Maximum number of connection retries (-1 for unlimited)",
     )
+    WEBSOCKET_RESET_RETRY_AFTER_SUCCESS: bool = Field(
+        True,
+        env="WEBSOCKET_RESET_RETRY_AFTER_SUCCESS",
+        description="Reset retry count after successful connection",
+    )
+
+    # Health monitoring settings
+    CONNECTION_HEALTH_CHECK_INTERVAL: int = Field(
+        60,
+        env="CONNECTION_HEALTH_CHECK_INTERVAL",
+        description="Health check interval in seconds",
+    )
+    MAX_NO_DATA_SECONDS: int = Field(
+        300,
+        env="MAX_NO_DATA_SECONDS",
+        description="Force reconnect if no data for this many seconds",
+    )
+    HEARTBEAT_INTERVAL: int = Field(
+        30, env="HEARTBEAT_INTERVAL", description="Send heartbeat every N seconds"
+    )
+    HEARTBEAT_TIMEOUT: int = Field(
+        10,
+        env="HEARTBEAT_TIMEOUT",
+        description="Expect heartbeat response within N seconds",
+    )
+
+    # Monitoring and alerting
+    MONITORING_ENABLED: bool = Field(True, env="MONITORING_ENABLED")
+    METRICS_REPORTING_INTERVAL: int = Field(
+        300,
+        env="METRICS_REPORTING_INTERVAL",
+        description="Metrics reporting interval in seconds",
+    )
+    ALERT_WEBHOOK_URL: str = Field("", env="ALERT_WEBHOOK_URL")
+    ALERT_EMAIL: str = Field("", env="ALERT_EMAIL")
 
     # API
     API_PREFIX: str = "/api/v1"
