@@ -1,0 +1,447 @@
+BID-ASK RECORDER - HOW TO USE
+=============================
+
+This is a plain text guide for using the bid-ask data recorder.
+
+QUICK START
+-----------
+
+Basic usage:
+  uv run bidaskrecord record HASH-USD
+
+With debug logging:
+  uv run bidaskrecord --debug record HASH-USD
+
+Multiple symbols:
+  uv run bidaskrecord record HASH-USD BTC-USD ETH-USD
+
+
+STARTING THE APPLICATION
+------------------------
+
+1. FOREGROUND MODE (Interactive)
+
+Basic recording:
+  uv run bidaskrecord record HASH-USD
+
+With debug logging:
+  uv run bidaskrecord --debug record HASH-USD
+
+Multiple symbols:
+  uv run bidaskrecord record HASH-USD BTC-USD ETH-USD
+
+2. BACKGROUND MODE (Daemon-like)
+
+Simple background execution:
+  nohup uv run bidaskrecord record HASH-USD > bidask.log 2>&1 &
+
+With date-stamped logs:
+  nohup uv run bidaskrecord record HASH-USD > bidask-$(date +%Y%m%d-%H%M%S).log 2>&1 &
+  echo $! > bidask-recorder.pid
+
+Using screen for persistent sessions:
+  screen -S bidask-recorder
+  uv run bidaskrecord record HASH-USD
+  # Detach: Press Ctrl+A, then D
+  # Reattach later: screen -r bidask-recorder
+
+Using tmux:
+  tmux new-session -d -s bidask-recorder
+  tmux send-keys -t bidask-recorder 'uv run bidaskrecord record HASH-USD' Enter
+  # Attach later: tmux attach -t bidask-recorder
+
+3. SYSTEM SERVICE (Production)
+
+Create service file: /etc/systemd/system/bidask-recorder.service
+
+[Unit]
+Description=Bid-Ask Data Recorder
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/path/to/bid-ask-record-py
+Environment=PATH=/path/to/bid-ask-record-py/.venv/bin
+ExecStart=/usr/local/bin/uv run bidaskrecord record HASH-USD
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
+Service management:
+  sudo systemctl enable bidask-recorder
+  sudo systemctl start bidask-recorder
+  sudo systemctl status bidask-recorder
+  sudo journalctl -u bidask-recorder -f
+
+
+STOPPING THE APPLICATION
+-------------------------
+
+1. Foreground Mode:
+   Press Ctrl+C for graceful shutdown
+
+2. Background Process:
+   # Find process ID
+   ps aux | grep bidaskrecord
+   pgrep -f bidaskrecord
+
+   # Graceful shutdown
+   kill <PID>
+
+   # Force kill (not recommended)
+   kill -9 <PID>
+
+   # Kill all instances
+   pkill -f bidaskrecord
+
+3. Using PID File:
+   kill $(cat bidask-recorder.pid)
+   rm bidask-recorder.pid
+
+4. Screen/Tmux:
+   screen -r bidask-recorder
+   # Then Ctrl+C
+   # Or kill session directly
+   screen -X -S bidask-recorder quit
+   tmux kill-session -t bidask-recorder
+
+5. System Service:
+   sudo systemctl stop bidask-recorder
+   sudo systemctl disable bidask-recorder
+
+
+MONITORING HEALTH & ACTIVITY
+-----------------------------
+
+1. Real-time Log Monitoring
+
+Watch all activity:
+  uv run bidaskrecord --debug record HASH-USD 2>&1 | tee -a bidask.log
+
+Monitor connection events:
+  uv run bidaskrecord --debug record HASH-USD 2>&1 | grep -E "(Connect|Disconnect|Retry|Health)"
+
+Watch data flow:
+  uv run bidaskrecord --debug record HASH-USD 2>&1 | grep -E "(order book|trade|Saved)"
+
+Monitor metrics reports:
+  uv run bidaskrecord record HASH-USD 2>&1 | grep "Metrics summary"
+
+2. Database Monitoring
+
+Check recorded data:
+  sqlite3 market_data.db
+
+Recent bid/ask records:
+  sqlite3 market_data.db "SELECT * FROM bid_ask ORDER BY created_at DESC LIMIT 10;"
+
+Recent trades:
+  sqlite3 market_data.db "SELECT * FROM trade ORDER BY created_at DESC LIMIT 10;"
+
+Count total records:
+  sqlite3 market_data.db "SELECT (SELECT COUNT(*) FROM bid_ask) as total_bidask, (SELECT COUNT(*) FROM trade) as total_trades, (SELECT COUNT(*) FROM asset) as total_assets;"
+
+Records in last hour:
+  sqlite3 market_data.db "SELECT COUNT(*) as recent_records FROM bid_ask WHERE created_at > datetime('now', '-1 hour');"
+
+3. Process Status
+
+Check if running:
+  pgrep -f "bidaskrecord record" && echo "Running" || echo "Not running"
+
+Detailed process info:
+  ps aux | grep -v grep | grep bidaskrecord
+
+
+CONFIGURATION OPTIONS
+----------------------
+
+Set environment variables to customize behavior:
+
+Health Monitoring:
+  export CONNECTION_HEALTH_CHECK_INTERVAL=60  # Health check every 60 seconds
+  export MAX_NO_DATA_SECONDS=300              # Reconnect if no data for 5 minutes
+  export HEARTBEAT_INTERVAL=30                # Send heartbeat every 30 seconds
+  export HEARTBEAT_TIMEOUT=10                 # Expect response within 10 seconds
+
+Retry Behavior:
+  export WEBSOCKET_MAX_RETRIES=-1             # Unlimited retries (default)
+  export WEBSOCKET_RECONNECT_DELAY=5          # Start with 5 second delay
+
+Monitoring & Metrics:
+  export MONITORING_ENABLED=true              # Enable metrics tracking (default)
+  export METRICS_REPORTING_INTERVAL=300      # Report metrics every 5 minutes
+
+Database & Logging:
+  export DATABASE_URL="sqlite:///./market_data.db"  # Database location
+  export LOG_LEVEL="INFO"                           # Logging level
+  export DEBUG=true                                 # Enable debug mode
+
+Configuration File:
+Create .env file in project root:
+  WEBSOCKET_MAX_RETRIES=-1
+  CONNECTION_HEALTH_CHECK_INTERVAL=60
+  MAX_NO_DATA_SECONDS=300
+  HEARTBEAT_INTERVAL=30
+  MONITORING_ENABLED=true
+  METRICS_REPORTING_INTERVAL=300
+  LOG_LEVEL=INFO
+
+
+SETTING UP ALERTS
+------------------
+
+Webhook Alerts:
+  # Slack webhook
+  export ALERT_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+
+  # Discord webhook
+  export ALERT_WEBHOOK_URL="https://discord.com/api/webhooks/YOUR/DISCORD/WEBHOOK"
+
+  # Custom webhook
+  export ALERT_WEBHOOK_URL="https://your-server.com/alerts"
+
+Alert Conditions:
+The system automatically sends alerts for:
+- High connection failures (>5 failures)
+- No data received for >10 minutes
+- Consecutive heartbeat failures (>=5)
+
+
+HEALTH INDICATORS
+-----------------
+
+HEALTHY OPERATION SIGNS:
+- INFO: WebSocket connected successfully
+- INFO: Subscribed to ORDER_BOOK for HASH-USD
+- INFO: Subscribed to TRADES for HASH-USD
+- DEBUG: Health check passed (seconds_since_last_message=2.1, heartbeat_failures=0)
+- DEBUG: Heartbeat pong received
+- DEBUG: Saved order book update (bid_price=1.234, ask_price=1.235)
+- INFO: Saved trade (trade_id=abc123, price=1.234, quantity=100.0)
+- INFO: Metrics summary (runtime_seconds=300, current_uptime_seconds=300, ...)
+
+Key indicators:
+- Regular "Health check passed" messages
+- "Heartbeat pong received" every 30 seconds
+- "Saved order book update" and "Saved trade" messages
+- Metrics reports showing increasing data counts
+- No reconnection attempts
+
+WARNING SIGNS:
+- WARNING: Heartbeat timeout (consecutive_failures=2)
+- WARNING: No data received for too long, forcing reconnect
+- WARNING: Connection refused, will retry (error=...)
+
+What to watch for:
+- Heartbeat timeout messages
+- Data flow interruptions
+- Occasional reconnection attempts
+- Database write errors
+
+CRITICAL ISSUES:
+- ERROR: Max retries reached, giving up
+- ERROR: Error in WebSocket client
+- ALERT: High connection failures: 6
+
+Immediate attention needed:
+- Repeated connection failures
+- Alert webhook notifications
+- Application crashes
+- Database connection issues
+
+
+TROUBLESHOOTING
+---------------
+
+Common Issues:
+
+1. Connection failures:
+   # Check network connectivity
+   ping figuremarkets.com
+
+   # Check WebSocket URL
+   curl -I https://figuremarkets.com/service-hft-exchange-websocket/ws/v1
+
+2. Database issues:
+   # Check database file permissions
+   ls -la market_data.db
+
+   # Test database connection
+   sqlite3 market_data.db "SELECT 1;"
+
+   # Check disk space
+   df -h .
+
+3. High memory usage:
+   # Monitor memory over time
+   watch 'ps aux | grep bidaskrecord'
+
+   # Check for memory leaks in logs
+   grep -i "memory\|leak" bidask.log
+
+4. Missing data:
+   # Check if symbols are valid
+   # Verify WebSocket subscription messages in debug logs
+   uv run bidaskrecord --debug record HASH-USD 2>&1 | grep -i subscribe
+
+Log Analysis:
+  # Error analysis
+  grep -i error bidask.log | tail -20
+
+  # Connection patterns
+  grep -E "(Connected|Disconnected|Retry)" bidask.log
+
+  # Performance metrics
+  grep "Metrics summary" bidask.log | tail -5
+
+Getting Help:
+  # Check application help
+  uv run bidaskrecord --help
+  uv run bidaskrecord record --help
+
+  # Version information
+  uv run bidaskrecord --version
+
+
+SUMMARY
+-------
+
+The bid-ask recorder is designed for reliable 24/7 operation with:
+
+- Automatic recovery from network issues
+- Comprehensive monitoring and health checks
+- Flexible deployment options (foreground, background, service)
+- Real-time alerting for critical issues
+- Detailed logging for troubleshooting
+
+For production use, recommended setup:
+1. Deploy as systemd service
+2. Configure webhook alerts
+3. Set up monitoring cron jobs
+4. Use log rotation
+5. Monitor database growth
+
+The application will handle most issues automatically, but monitoring the
+health indicators ensures optimal performance and early detection of any problems.
+
+
+EXAMPLE SCRIPTS
+---------------
+
+Restart Script (restart-bidask.sh):
+#!/bin/bash
+set -e
+
+PID_FILE="bidask-recorder.pid"
+LOG_FILE="bidask-$(date +%Y%m%d-%H%M%S).log"
+
+echo "Stopping bidask recorder..."
+if [ -f "$PID_FILE" ]; then
+    PID=$(cat $PID_FILE)
+    if ps -p $PID > /dev/null; then
+        kill $PID
+        echo "   Sent SIGTERM to PID $PID"
+
+        for i in {1..10}; do
+            if ! ps -p $PID > /dev/null; then
+                echo "   Process stopped gracefully"
+                break
+            fi
+            echo "   Waiting for shutdown... ($i/10)"
+            sleep 1
+        done
+
+        if ps -p $PID > /dev/null; then
+            echo "   Force killing process"
+            kill -9 $PID
+        fi
+    fi
+    rm -f $PID_FILE
+fi
+
+echo "Starting bidask recorder..."
+nohup uv run bidaskrecord record HASH-USD > "$LOG_FILE" 2>&1 &
+NEW_PID=$!
+echo $NEW_PID > $PID_FILE
+
+echo "   Started with PID: $NEW_PID"
+echo "   Logging to: $LOG_FILE"
+
+sleep 2
+if ps -p $NEW_PID > /dev/null; then
+    echo "   Process confirmed running"
+else
+    echo "   Process may have failed to start"
+    exit 1
+fi
+
+Make executable: chmod +x restart-bidask.sh
+Usage: ./restart-bidask.sh
+
+
+Health Check Script (check-health.sh):
+#!/bin/bash
+set -e
+
+PID_FILE="bidask-recorder.pid"
+DB_FILE="market_data.db"
+
+echo "Health Check - Bid-Ask Recorder"
+echo "================================"
+
+if [ -f "$PID_FILE" ]; then
+    PID=$(cat $PID_FILE)
+    if ps -p $PID > /dev/null; then
+        echo "Process Status: Running (PID: $PID)"
+
+        RUNTIME=$(ps -o etime= -p $PID | tr -d ' ')
+        echo "   Runtime: $RUNTIME"
+
+        MEMORY=$(ps -o rss= -p $PID | tr -d ' ')
+        echo "   Memory: ${MEMORY}KB"
+
+    else
+        echo "Process Status: Not running (stale PID file)"
+        rm -f $PID_FILE
+        exit 1
+    fi
+else
+    echo "Process Status: Not running (no PID file)"
+    exit 1
+fi
+
+if [ -f "$DB_FILE" ]; then
+    echo ""
+    echo "Database Activity:"
+
+    RECENT_BIDASK=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM bid_ask WHERE created_at > datetime('now', '-5 minutes')" 2>/dev/null || echo "0")
+    RECENT_TRADES=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM trade WHERE created_at > datetime('now', '-5 minutes')" 2>/dev/null || echo "0")
+
+    if [ "$RECENT_BIDASK" -gt 0 ] || [ "$RECENT_TRADES" -gt 0 ]; then
+        echo "   Active: $RECENT_BIDASK bid/ask, $RECENT_TRADES trades (last 5 min)"
+    else
+        echo "   No recent data recorded"
+    fi
+
+    TOTAL_BIDASK=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM bid_ask" 2>/dev/null || echo "0")
+    TOTAL_TRADES=$(sqlite3 $DB_FILE "SELECT COUNT(*) FROM trade" 2>/dev/null || echo "0")
+    echo "   Total: $TOTAL_BIDASK bid/ask, $TOTAL_TRADES trades"
+
+    LAST_RECORD=$(sqlite3 $DB_FILE "SELECT MAX(created_at) FROM bid_ask" 2>/dev/null || echo "None")
+    echo "   Last bid/ask: $LAST_RECORD"
+
+else
+    echo "Database: File not found"
+fi
+
+echo ""
+echo "================================"
+
+Make executable: chmod +x check-health.sh
+Usage: ./check-health.sh
