@@ -1,7 +1,7 @@
-websockets>=11.0.3
-SQLAlchemy>=2.0.23
-pydantic>=2.5.2
-python-dotenv>=1.0.0
-structlog>=23.2.0
 click>=8.1.7
+pydantic>=2.5.2
 python-dateutil>=2.8.2
+python-dotenv>=1.0.0
+SQLAlchemy>=2.0.23
+structlog>=23.2.0
+websockets>=11.0.3

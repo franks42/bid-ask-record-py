@@ -1,5 +1,4 @@
-""
-Application settings and configuration.
+"""Application settings and configuration.
 
 This module provides a centralized way to manage application settings
 using environment variables with sensible defaults.
@@ -9,7 +8,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import AnyHttpUrl, BaseSettings, PostgresDsn, validator, Field
+from pydantic import AnyHttpUrl, Field, PostgresDsn, validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -38,7 +38,9 @@ class Settings(BaseSettings):
         5, env="WEBSOCKET_RECONNECT_DELAY", description="Reconnection delay in seconds"
     )
     WEBSOCKET_MAX_RETRIES: int = Field(
-        10, env="WEBSOCKET_MAX_RETRIES", description="Maximum number of connection retries"
+        10,
+        env="WEBSOCKET_MAX_RETRIES",
+        description="Maximum number of connection retries",
     )
 
     # API
@@ -89,8 +91,7 @@ settings = Settings()
 
 
 def get_settings() -> Settings:
-    ""
-    Get the settings instance.
+    """Get the settings instance.
 
     Returns:
         Settings: The settings instance.
