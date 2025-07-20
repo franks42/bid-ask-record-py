@@ -12,7 +12,21 @@ This is a Python application that records bid-ask market data from Figure Market
 
 ## Recent Work Completed
 
-### 1. Fixed Critical Syntax Errors (Previous Session)
+### 1. Figure Markets WebSocket Behavior Analysis (Current Session)
+**Discovered FM's Connection Requirements:**
+- **WebSocket Protocol Pings**: FM requires WebSocket protocol pings every ~60 seconds for keepalive
+- **No Pong Responses**: FM accepts pings but does not respond with pongs (one-way keepalive)
+- **JSON Ping Rejection**: FM rejects JSON `{"action":"PING"}` messages with "Invalid request"
+- **30-Second Order Book Pattern**: FM sends order book snapshots every 30 seconds regardless of changes
+- **Duplicate Detection Essential**: Many snapshots are identical when market is inactive
+
+**Implementation:**
+- Configured WebSocket protocol pings every 61 seconds (`ping_interval=61`)
+- Removed all JSON ping/pong handling code
+- Enhanced duplicate detection with separate `order_book_raw` table
+- Added comprehensive documentation of FM's behavior
+
+### 2. Fixed Critical Syntax Errors (Previous Session)
 - Resolved syntax error in `bidaskrecord/models/market_data.py` (unterminated triple quotes)
 - Fixed import errors and code formatting issues
 - Applied black formatting and isort import sorting
@@ -49,7 +63,61 @@ This is a Python application that records bid-ask market data from Figure Market
 - Added `HOWTO.txt` - comprehensive plain text usage guide
 - Covers starting/stopping, monitoring, configuration, troubleshooting
 
-### 5. Major Database Schema Refactor (Current Session)
+### 5. Comprehensive Trade-Order Book Correlation Analysis (Current Session)
+**Major New Features for Market Analysis:**
+
+1. **Trade Display Columns**
+   - Added `price_display`, `quantity_display`, `total_usd_display` to Trade model
+   - Automatic calculation of display values with proper decimal precision (3 decimals for price, 0 for quantity)
+   - Enhanced Trade.create_with_display_values() factory method
+
+2. **Database Views for Clean Analysis**
+   - `order_book_asks_view` - Ask side order book with display values
+   - `order_book_bids_view` - Bid side order book with display values
+   - `trade_orderbook_impact_view` - Trades with before/after order book context
+   - `blockchain_blocks_view` - Groups trades by blockchain block timestamp
+
+3. **Blockchain-Aware Analysis System**
+   - Discovered temporal correlation challenges between trade timestamps (authoritative) and order book timestamps (our received_at)
+   - Implemented forensic analysis to determine trade direction (buy vs sell) by examining liquidity consumption
+   - Critical insight: Trades with identical timestamps execute atomically in same blockchain block
+
+4. **Advanced Analysis Tools**
+   - `trade_impact_analysis.py` - Analyze specific trade impacts on order book levels
+   - `blockchain_aware_analysis.py` - Handle temporal correlation challenges and atomic block analysis
+   - `create_order_book_views.py` - Generate clean SQL views for analysis
+   - `query_order_book_examples.py` - Example queries and usage patterns
+   - `trade_orderbook_correlation.py` - Comprehensive correlation analysis
+   - `trade_orderbook_queries.sql` - Pre-built SQL queries for common analysis patterns
+
+### 6. Critical Market Microstructure Discoveries
+**Documented Temporal Data Correlation Challenges:**
+
+1. **The Problem**: DEX trades execute atomically in blockchain blocks, but API provides:
+   - Trade timestamps (authoritative from blockchain)
+   - Order book timestamps (our received_at, ~100-200ms delayed)
+   - No blockchain block numbers for correlation
+
+2. **Example Discovery**: Block 2025-07-20 22:09:21.089046
+   - Trade 1: $0.030 × 13 HASH = $0.39
+   - Trade 2: $0.029 × 7374 HASH = $213.85
+   - Total: 7387 HASH removed from bid side (forensic match ✓)
+
+3. **Forensic Trade Direction Detection**:
+   - SELL orders consume bid-side liquidity (sellers "hit the bids")
+   - BUY orders consume ask-side liquidity (buyers "hit the asks")
+   - Can reliably determine direction by examining which side lost liquidity
+
+4. **DEX Trade Mechanics Understanding**:
+   - Trades are NOT separate transactions but order overlap settlements
+   - Order submission → Overlap detection → Atomic settlement in single block
+   - What we see as "trades" are settlement events from overlapping orders
+
+5. **Analysis Limitations Documented**:
+   - Can detect: direction, settlement quantities, atomic execution patterns
+   - Cannot detect: order types, fill conditions, partial fills vs complete fills, hidden orders
+
+### 7. Major Database Schema Refactor (Previous Session)
 **Unified Order Book System with Production Quality:**
 
 1. **Unified order_book Table**

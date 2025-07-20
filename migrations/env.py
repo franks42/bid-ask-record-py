@@ -13,6 +13,8 @@ from bidaskrecord.config.settings import get_settings
 # Import the models to ensure they're registered with SQLAlchemy
 from bidaskrecord.models.base import BaseModel as Base
 from bidaskrecord.models.market_data import Asset, DenomReference, Trade
+from bidaskrecord.models.order_book import OrderBook
+from bidaskrecord.models.order_book_raw import OrderBookRaw
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

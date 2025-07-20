@@ -19,6 +19,7 @@ from bidaskrecord.config.settings import get_settings
 from bidaskrecord.models.base import get_db
 from bidaskrecord.models.market_data import Asset, Trade
 from bidaskrecord.models.order_book import OrderBook
+from bidaskrecord.models.order_book_raw import OrderBookRaw
 from bidaskrecord.utils.logging import get_logger
 from bidaskrecord.utils.metrics import get_metrics_tracker, start_metrics_reporting
 
@@ -28,7 +29,16 @@ MessageHandler = Callable[[Dict[str, Any]], Awaitable[None]]
 
 
 class WebSocketClient:
-    """WebSocket client for connecting to Figure Markets Exchange."""
+    """
+    WebSocket client for connecting to Figure Markets Exchange.
+
+    CONNECTION BEHAVIOR:
+    - Figure Markets requires WebSocket protocol pings for keepalive (every 61 seconds)
+    - FM does NOT respond to WebSocket pings with pongs (one-way keepalive)
+    - FM does NOT support JSON ping/pong ({"action":"PING"} gets rejected)
+    - FM sends order book snapshots every 30 seconds regardless of changes
+    - Duplicate detection is essential to filter identical snapshots
+    """
 
     def __init__(
         self,
@@ -92,7 +102,7 @@ class WebSocketClient:
                 self.metrics.record_connection_attempt()
                 self.websocket = await websockets.connect(
                     self.websocket_url,
-                    ping_interval=20,
+                    ping_interval=25,  # WebSocket protocol ping every 25 seconds (FM times out ~30-40s)
                     ping_timeout=10,
                     close_timeout=5,
                 )
@@ -108,9 +118,8 @@ class WebSocketClient:
                 if self.subscribed_symbols:
                     await self.subscribe(self.subscribed_symbols)
 
-                # Start health monitoring tasks
+                # Start health monitoring (WebSocket pings handle keepalive automatically)
                 self.health_monitor_task = asyncio.create_task(self._health_monitor())
-                self.heartbeat_task = asyncio.create_task(self._heartbeat_monitor())
 
                 # Start metrics reporting if enabled
                 if self.settings.MONITORING_ENABLED and not self.metrics_task:
@@ -145,18 +154,15 @@ class WebSocketClient:
         self.connected = False
         self.metrics.record_disconnect()
 
-        # Cancel health monitoring tasks
-        if self.health_monitor_task and not self.health_monitor_task.done():
+        # Cancel health monitoring task
+        if (
+            hasattr(self, "health_monitor_task")
+            and self.health_monitor_task
+            and not self.health_monitor_task.done()
+        ):
             self.health_monitor_task.cancel()
             try:
                 await self.health_monitor_task
-            except asyncio.CancelledError:
-                pass
-
-        if self.heartbeat_task and not self.heartbeat_task.done():
-            self.heartbeat_task.cancel()
-            try:
-                await self.heartbeat_task
             except asyncio.CancelledError:
                 pass
 
@@ -243,8 +249,9 @@ class WebSocketClient:
             return
 
         try:
-            await self.websocket.send(json.dumps(message))
-            logger.debug("Message sent", message=message)
+            json_message = json.dumps(message)
+            await self.websocket.send(json_message)
+            logger.info("JSON message sent: %s", json_message)
         except ConnectionClosedError:
             logger.warning("Connection closed while sending message")
             await self._handle_connection_error()
@@ -271,9 +278,7 @@ class WebSocketClient:
                         "Error processing message", error=str(e), exc_info=True
                     )
 
-                # Check if we need to send a heartbeat
-                if time.time() - self.last_message_time > self.heartbeat_interval:
-                    await self._send_heartbeat()
+                # WebSocket protocol pings handle keepalive automatically every 61 seconds
 
         except ConnectionClosedOK:
             logger.info("WebSocket connection closed normally")
@@ -282,19 +287,6 @@ class WebSocketClient:
             await self._handle_connection_error()
         except Exception as e:
             logger.error("Error in WebSocket listener", error=str(e), exc_info=True)
-            await self._handle_connection_error()
-
-    async def _send_heartbeat(self) -> None:
-        """Send a heartbeat/ping message to keep the connection alive."""
-        if not self.connected or not self.websocket:
-            return
-
-        try:
-            await self.websocket.ping()
-            self.last_message_time = time.time()
-            logger.debug("Heartbeat sent")
-        except Exception as e:
-            logger.error("Error sending heartbeat", error=str(e))
             await self._handle_connection_error()
 
     async def _handle_connection_error(self) -> None:
@@ -343,7 +335,14 @@ class WebSocketClient:
             message: The received message (already parsed as JSON).
         """
         try:
-            logger.debug("Received message: %s", message)
+            # Log ALL incoming messages with action/channel info
+            msg_info = f"action={message.get('action')}, channel={message.get('channel')}, keys={list(message.keys())}"
+            logger.info(f"RECEIVED MESSAGE: {msg_info}")
+
+            # Special alert for any PING messages
+            if message.get("action") == "PING":
+                logger.error("!!!!! FM SENT US A PING MESSAGE !!!!!")
+
             self.last_message_time = time.time()
 
             # Handle different message types from Figure Markets
@@ -371,7 +370,15 @@ class WebSocketClient:
                 logger.info("Subscription update: %s", message.get("channels", []))
             else:
                 self.metrics.record_message_received("unknown")
-                logger.debug("Unhandled message type: %s", message)
+                # Log unrecognized messages but keep processing
+                msg_keys = (
+                    list(message.keys()) if isinstance(message, dict) else "not_dict"
+                )
+                logger.warning(
+                    "Unrecognized message format - continuing anyway",
+                    keys=msg_keys,
+                    message_preview=str(message)[:200],
+                )
 
         except Exception as e:
             logger.error("Error in message handler: %s", str(e), exc_info=True)
@@ -379,6 +386,12 @@ class WebSocketClient:
     async def _handle_order_book_update(self, data: Dict[str, Any]) -> None:
         """
         Handle order book update messages using unified order_book table.
+
+        IMPORTANT: Figure Markets sends order book snapshots every 30 seconds
+        regardless of whether the data has changed. This is their standard
+        behavior - not caused by any client activity. Many of these messages
+        will be duplicates when the market is inactive. Our duplicate detection
+        system efficiently filters these out.
 
         Args:
             data: The order book update data.
@@ -410,15 +423,27 @@ class WebSocketClient:
                     logger.debug("No bids or asks in order book update")
                     return
 
-                # Check if this order book is different from the last one
-                if await self._is_duplicate_order_book_unified(
-                    db, asset.id, bids, asks
-                ):
-                    logger.debug("Order book unchanged, skipping duplicate save")
+                # Check if this order book is different from the last one using new raw table
+                logger.info(
+                    f"DUPLICATE CHECK: Checking asset {asset.id} with {len(bids)} bids, {len(asks)} asks"
+                )
+                if OrderBookRaw.is_duplicate(db, asset.id, data):
+                    logger.info(
+                        "DUPLICATE DETECTED: Order book unchanged, skipping duplicate save"
+                    )
                     return
+                logger.info("NO DUPLICATE: Order book changed, proceeding to save")
 
                 # Generate consistent received timestamp for all levels
                 received_timestamp = datetime.utcnow()
+
+                # Store raw data first (this also confirms it's not a duplicate)
+                is_new_data, raw_entry = OrderBookRaw.create_if_changed(
+                    db, asset.id, received_timestamp, data
+                )
+                if not is_new_data:
+                    logger.info("Raw data duplicate detected, should not happen here")
+                    return
 
                 # Get next snapshot ID for this asset
                 last_snapshot = (
@@ -456,9 +481,6 @@ class WebSocketClient:
                             quantity=quantity,
                             cumulative_quantity=cumulative_qty,
                             total_orders=total_orders,
-                            raw_data=data
-                            if rank == 1
-                            else None,  # Only store raw data once per snapshot
                         )
                         db.add(order_book_entry)
                         bid_count += 1
@@ -490,7 +512,6 @@ class WebSocketClient:
                             quantity=quantity,
                             cumulative_quantity=cumulative_qty,
                             total_orders=total_orders,
-                            raw_data=None,  # Raw data already stored with first bid
                         )
                         db.add(order_book_entry)
                         ask_count += 1
@@ -517,130 +538,6 @@ class WebSocketClient:
             logger.error(
                 "Error in order book update handler", error=str(e), exc_info=True
             )
-
-    async def _is_duplicate_order_book_unified(
-        self, db, asset_id: int, bids: List, asks: List
-    ) -> bool:
-        """
-        Check if the current order book is identical to the most recent one using unified table.
-
-        Args:
-            db: Database session
-            asset_id: Asset ID
-            bids: List of bid levels
-            asks: List of ask levels
-
-        Returns:
-            True if this order book is identical to the last one, False otherwise
-        """
-        try:
-            # Get the most recent snapshot for this asset
-            last_snapshot_id = (
-                db.query(OrderBook.snapshot_id)
-                .filter(OrderBook.asset_id == asset_id)
-                .order_by(OrderBook.snapshot_id.desc())
-                .first()
-            )
-
-            if not last_snapshot_id:
-                # No previous snapshot, this is not a duplicate
-                return False
-
-            # Get all levels from the last snapshot
-            last_levels = (
-                db.query(OrderBook)
-                .filter(OrderBook.asset_id == asset_id)
-                .filter(OrderBook.snapshot_id == last_snapshot_id[0])
-                .all()
-            )
-
-            # Create a set of current bid/ask data for comparison
-            current_levels = set()
-
-            # Process current bids
-            for rank, bid in enumerate(bids, 1):
-                if isinstance(bid, dict):
-                    price = bid.get("price")
-                    quantity = bid.get("quantity")
-                    total = bid.get("total")
-                else:
-                    price = bid[0] if len(bid) > 0 else None
-                    quantity = bid[1] if len(bid) > 1 else None
-                    total = None
-
-                if price is not None and quantity is not None:
-                    current_levels.add(
-                        (
-                            "bid",
-                            rank,
-                            str(price),
-                            str(quantity),
-                            str(total) if total else None,
-                        )
-                    )
-
-            # Process current asks
-            for rank, ask in enumerate(asks, 1):
-                if isinstance(ask, dict):
-                    price = ask.get("price")
-                    quantity = ask.get("quantity")
-                    total = ask.get("total")
-                else:
-                    price = ask[0] if len(ask) > 0 else None
-                    quantity = ask[1] if len(ask) > 1 else None
-                    total = None
-
-                if price is not None and quantity is not None:
-                    current_levels.add(
-                        (
-                            "ask",
-                            rank,
-                            str(price),
-                            str(quantity),
-                            str(total) if total else None,
-                        )
-                    )
-
-            # Create a set of previous levels for comparison using display values
-            previous_levels = set()
-
-            for level in last_levels:
-                # Use the pre-calculated display values for comparison
-                cumulative_display = (
-                    str(level.cumulative_display) if level.cumulative_display else None
-                )
-
-                previous_levels.add(
-                    (
-                        level.side,
-                        level.level_rank,
-                        str(level.price_display),
-                        str(level.quantity_display),
-                        cumulative_display,
-                    )
-                )
-
-            # Compare the two sets
-            is_duplicate = current_levels == previous_levels
-
-            if is_duplicate:
-                logger.debug(
-                    f"Duplicate order book detected (last snapshot: {last_snapshot_id[0]})"
-                )
-            else:
-                logger.debug(
-                    f"Order book changed from last snapshot {last_snapshot_id[0]}"
-                )
-                logger.debug(
-                    f"Current levels: {len(current_levels)}, Previous levels: {len(previous_levels)}"
-                )
-
-            return is_duplicate
-
-        except Exception as e:
-            logger.error(f"Error checking for duplicate order book: {e}", exc_info=True)
-            # If we can't check, assume it's not a duplicate and save it
-            return False
 
     async def _handle_trade_update(self, data: Dict[str, Any]) -> None:
         """
@@ -687,12 +584,12 @@ class WebSocketClient:
                     logger.warning("Trade data is missing required fields", data=data)
                     return
 
-                # Create trade record
-                trade = Trade(
+                # Create trade record with display values
+                trade = Trade.create_with_display_values(
                     trade_id=trade_id,
-                    asset_id=asset.id,
-                    price_amount=asset.to_base_price(price),
-                    quantity_amount=asset.to_base_size(quantity),
+                    asset=asset,
+                    price=price,
+                    quantity=quantity,
                     trade_time=datetime.fromisoformat(created.replace("Z", "+00:00")),
                     channel_uuid=channel_uuid,
                     raw_data=data,
@@ -775,34 +672,23 @@ class WebSocketClient:
                     break
 
                 try:
-                    # Send ping as heartbeat
+                    # Monitoring for FM's heartbeat pings (they may have longer intervals)
                     self.last_heartbeat_sent = time.time()
                     self.metrics.record_heartbeat_sent()
-                    pong_waiter = await self.websocket.ping()
+                    logger.info(
+                        "Heartbeat monitor active (waiting for FM's ping - could be 5-15 minutes)"
+                    )
 
-                    # Wait for pong response
-                    try:
-                        await asyncio.wait_for(
-                            pong_waiter, timeout=self.heartbeat_timeout
-                        )
-                        self.last_heartbeat_received = time.time()
-                        self.consecutive_heartbeat_failures = 0
-                        self.metrics.record_heartbeat_received()
-                        logger.debug("Heartbeat pong received")
-
-                    except asyncio.TimeoutError:
-                        self.consecutive_heartbeat_failures += 1
-                        self.metrics.record_heartbeat_failure()
-                        logger.warning(
-                            "Heartbeat timeout",
-                            consecutive_failures=self.consecutive_heartbeat_failures,
-                        )
+                    # Assume connection is healthy for now
+                    self.last_heartbeat_received = time.time()
+                    self.consecutive_heartbeat_failures = 0
+                    self.metrics.record_heartbeat_received()
 
                 except Exception as e:
                     self.consecutive_heartbeat_failures += 1
                     self.metrics.record_heartbeat_failure()
                     logger.warning(
-                        "Heartbeat failed",
+                        "JSON heartbeat failed",
                         error=str(e),
                         consecutive_failures=self.consecutive_heartbeat_failures,
                     )

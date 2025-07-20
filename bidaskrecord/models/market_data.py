@@ -508,6 +508,22 @@ class Trade(BaseModel):
     # Quantity in base denomination (e.g., wei, satoshi)
     quantity_amount: Mapped[int] = mapped_column(Numeric(36, 0), nullable=False)
 
+    # Display columns for easy querying and presentation
+    # Price in display units (e.g., USD) with 3 decimal precision
+    price_display: Mapped[Decimal] = mapped_column(
+        Numeric(18, 3), nullable=False, doc="Price in display units (e.g., USD)"
+    )
+
+    # Quantity in display units (e.g., HASH) with 0 decimal precision (whole numbers)
+    quantity_display: Mapped[Decimal] = mapped_column(
+        Numeric(18, 0), nullable=False, doc="Quantity in display units (e.g., HASH)"
+    )
+
+    # Total value in USD with 3 decimal precision
+    total_usd_display: Mapped[Decimal] = mapped_column(
+        Numeric(18, 3), nullable=False, doc="Total trade value in USD"
+    )
+
     # Timestamp of the trade
     trade_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
 
@@ -530,45 +546,51 @@ class Trade(BaseModel):
             f"price={self.price_amount}, qty={self.quantity_amount})>"
         )
 
-    # Hybrid properties for display values
-    @hybrid_property
-    def price_display(self) -> Decimal:
-        """Get the trade price in display units.
+    @classmethod
+    def create_with_display_values(
+        cls,
+        trade_id: str,
+        asset: Asset,
+        price: Union[str, int, float, Decimal],
+        quantity: Union[str, int, float, Decimal],
+        trade_time: datetime,
+        channel_uuid: Optional[str] = None,
+        raw_data: Optional[Dict[str, Any]] = None,
+    ) -> "Trade":
+        """Create a Trade instance with calculated display values.
+
+        Args:
+            trade_id: Unique identifier for the trade
+            asset: Asset being traded
+            price: Trade price in display units (e.g., USD)
+            quantity: Trade quantity in display units (e.g., HASH)
+            trade_time: When the trade occurred
+            channel_uuid: Optional channel UUID from exchange
+            raw_data: Optional raw message data
 
         Returns:
-            Decimal: The trade price in display units (e.g., USD)
-
-        Raises:
-            ValueError: If asset is not loaded
+            Trade: New trade instance with all values calculated
         """
-        if not hasattr(self, "asset") or self.asset is None:
-            raise ValueError("Asset not loaded for this Trade")
-        return self.asset.to_display_price(self.price_amount)
+        # Convert to base amounts for storage
+        price_amount = asset.to_base_price(price)
+        quantity_amount = asset.to_base_size(quantity)
 
-    @hybrid_property
-    def quantity_display(self) -> Decimal:
-        """Get the trade quantity in display units.
+        # Convert back to display for precise storage (3 decimals for price, 0 for quantity)
+        price_display = Decimal(str(price)).quantize(Decimal("0.001"))
+        quantity_display = Decimal(str(quantity)).quantize(Decimal("1"))
+        total_usd_display = (price_display * quantity_display).quantize(
+            Decimal("0.001")
+        )
 
-        Returns:
-            Decimal: The trade quantity in display units (e.g., ETH)
-
-        Raises:
-            ValueError: If asset is not loaded
-        """
-        if not hasattr(self, "asset") or self.asset is None:
-            raise ValueError("Asset not loaded for this Trade")
-        return self.asset.to_display_size(self.quantity_amount)
-
-    @hybrid_property
-    def notional_display(self) -> Decimal:
-        """Calculate the notional value in display units (price * quantity).
-
-        Returns:
-            Decimal: The notional value in display units
-
-        Raises:
-            ValueError: If asset is not loaded or prices/quantities are not available
-        """
-        if not hasattr(self, "asset") or self.asset is None:
-            raise ValueError("Asset not loaded for this Trade")
-        return self.price_display * self.quantity_display
+        return cls(
+            trade_id=trade_id,
+            asset_id=asset.id,
+            price_amount=price_amount,
+            quantity_amount=quantity_amount,
+            price_display=price_display,
+            quantity_display=quantity_display,
+            total_usd_display=total_usd_display,
+            trade_time=trade_time,
+            channel_uuid=channel_uuid,
+            raw_data=raw_data,
+        )

@@ -126,10 +126,8 @@ class OrderBook(BaseModel):
         doc="Number of orders at this price level (if provided by exchange)",
     )
 
-    # Raw data for auditing
-    raw_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(
-        JSON, nullable=True, doc="Raw message data from the exchange"
-    )
+    # Note: Raw data is now stored in separate order_book_raw table
+    # to avoid duplication and simplify duplicate detection
 
     # Relationships
     asset: Mapped["Asset"] = relationship("Asset", lazy="selectin")
@@ -231,7 +229,6 @@ class OrderBook(BaseModel):
         quantity: str | float | Decimal,
         cumulative_quantity: Optional[str | float | Decimal] = None,
         total_orders: Optional[int] = None,
-        raw_data: Optional[Dict[str, Any]] = None,
     ) -> "OrderBook":
         """Create OrderBook entry from exchange data with all calculations."""
 
@@ -289,5 +286,4 @@ class OrderBook(BaseModel):
             price_denom=asset.display_price_denom,
             quantity_denom=asset.display_size_denom,
             total_orders=total_orders,
-            raw_data=raw_data,
         )

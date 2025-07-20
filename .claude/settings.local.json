@@ -8,7 +8,22 @@
       "Bash(uv run black:*)",
       "Bash(uv run isort:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(uv pip install:*)",
+      "Bash(uv run:*)",
+      "Bash(ls:*)",
+      "Bash(sqlite3:*)",
+      "Bash(cat:*)",
+      "Bash(rm:*)",
+      "Bash(uv pip:*)",
+      "Bash(uv add:*)",
+      "Bash(pgrep:*)",
+      "Bash(timeout 30s uv run:*)",
+      "Bash(kill:*)",
+      "Bash(pkill:*)",
+      "WebFetch(domain:websockets.readthedocs.io)",
+      "Bash(chmod:*)"
     ],
     "deny": []
   }
