@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
@@ -17,7 +17,8 @@ from websockets.exceptions import (
 
 from bidaskrecord.config.settings import get_settings
 from bidaskrecord.models.base import get_db
-from bidaskrecord.models.market_data import Asset, BidAsk, Trade
+from bidaskrecord.models.market_data import Asset, Trade
+from bidaskrecord.models.order_book import OrderBook
 from bidaskrecord.utils.logging import get_logger
 from bidaskrecord.utils.metrics import get_metrics_tracker, start_metrics_reporting
 
@@ -377,7 +378,7 @@ class WebSocketClient:
 
     async def _handle_order_book_update(self, data: Dict[str, Any]) -> None:
         """
-        Handle order book update messages with proper database session management.
+        Handle order book update messages using unified order_book table.
 
         Args:
             data: The order book update data.
@@ -401,48 +402,114 @@ class WebSocketClient:
                     logger.warning(f"Asset not found for symbol: {symbol}")
                     return
 
-                # Process best bid/ask from the order book
+                # Process full order book from the message
                 bids = data.get("bids", [])
                 asks = data.get("asks", [])
 
-                if not bids or not asks:
+                if not bids and not asks:
                     logger.debug("No bids or asks in order book update")
                     return
 
-                # Get best bid (first in the list is the best price)
-                best_bid = (
-                    bids[0]
-                    if isinstance(bids[0], dict)
-                    else {"price": bids[0][0], "quantity": bids[0][1]}
-                )
-                best_ask = (
-                    asks[0]
-                    if isinstance(asks[0], dict)
-                    else {"price": asks[0][0], "quantity": asks[0][1]}
-                )
+                # Check if this order book is different from the last one
+                if await self._is_duplicate_order_book_unified(
+                    db, asset.id, bids, asks
+                ):
+                    logger.debug("Order book unchanged, skipping duplicate save")
+                    return
 
-                # Create bid/ask record
-                bidask = BidAsk(
-                    asset_id=asset.id,
-                    exchange_timestamp=Decimal(str(time.time())),
-                    bid_price_amount=asset.to_base_price(best_bid["price"]),
-                    ask_price_amount=asset.to_base_price(best_ask["price"]),
-                    bid_size_amount=asset.to_base_size(best_bid["quantity"]),
-                    ask_size_amount=asset.to_base_size(best_ask["quantity"]),
-                    raw_data=data,
-                )
+                # Generate consistent received timestamp for all levels
+                received_timestamp = datetime.utcnow()
 
-                db.add(bidask)
+                # Get next snapshot ID for this asset
+                last_snapshot = (
+                    db.query(OrderBook.snapshot_id)
+                    .filter(OrderBook.asset_id == asset.id)
+                    .order_by(OrderBook.snapshot_id.desc())
+                    .first()
+                )
+                snapshot_id = (last_snapshot[0] + 1) if last_snapshot else 1
+
+                # Process bid levels
+                bid_count = 0
+                for rank, bid in enumerate(bids, 1):
+                    if isinstance(bid, dict):
+                        price = bid.get("price")
+                        quantity = bid.get("quantity")
+                        cumulative_qty = bid.get("total")
+                        total_orders = bid.get("totalOrders")
+                    else:
+                        # Handle array format [price, quantity]
+                        price = bid[0] if len(bid) > 0 else None
+                        quantity = bid[1] if len(bid) > 1 else None
+                        cumulative_qty = None
+                        total_orders = None
+
+                    if price is not None and quantity is not None:
+                        order_book_entry = OrderBook.from_exchange_data(
+                            asset=asset,
+                            snapshot_id=snapshot_id,
+                            channel_uuid=channel_uuid,
+                            received_at=received_timestamp,
+                            side="bid",
+                            level_rank=rank,
+                            price=price,
+                            quantity=quantity,
+                            cumulative_quantity=cumulative_qty,
+                            total_orders=total_orders,
+                            raw_data=data
+                            if rank == 1
+                            else None,  # Only store raw data once per snapshot
+                        )
+                        db.add(order_book_entry)
+                        bid_count += 1
+
+                # Process ask levels
+                ask_count = 0
+                for rank, ask in enumerate(asks, 1):
+                    if isinstance(ask, dict):
+                        price = ask.get("price")
+                        quantity = ask.get("quantity")
+                        cumulative_qty = ask.get("total")
+                        total_orders = ask.get("totalOrders")
+                    else:
+                        # Handle array format [price, quantity]
+                        price = ask[0] if len(ask) > 0 else None
+                        quantity = ask[1] if len(ask) > 1 else None
+                        cumulative_qty = None
+                        total_orders = None
+
+                    if price is not None and quantity is not None:
+                        order_book_entry = OrderBook.from_exchange_data(
+                            asset=asset,
+                            snapshot_id=snapshot_id,
+                            channel_uuid=channel_uuid,
+                            received_at=received_timestamp,
+                            side="ask",
+                            level_rank=rank,
+                            price=price,
+                            quantity=quantity,
+                            cumulative_quantity=cumulative_qty,
+                            total_orders=total_orders,
+                            raw_data=None,  # Raw data already stored with first bid
+                        )
+                        db.add(order_book_entry)
+                        ask_count += 1
+
                 db.commit()
                 self.metrics.record_database_write(success=True)
 
-                logger.debug(
-                    "Saved order book update",
+                logger.info(
+                    "Saved order book change",
                     symbol=symbol,
-                    bid_price=best_bid["price"],
-                    ask_price=best_ask["price"],
-                    bid_size=best_bid["quantity"],
-                    ask_size=best_ask["quantity"],
+                    snapshot_id=snapshot_id,
+                    bid_levels=bid_count,
+                    ask_levels=ask_count,
+                    best_bid=bids[0].get("price")
+                    if bids and isinstance(bids[0], dict)
+                    else (bids[0][0] if bids else None),
+                    best_ask=asks[0].get("price")
+                    if asks and isinstance(asks[0], dict)
+                    else (asks[0][0] if asks else None),
                 )
 
         except Exception as e:
@@ -450,6 +517,130 @@ class WebSocketClient:
             logger.error(
                 "Error in order book update handler", error=str(e), exc_info=True
             )
+
+    async def _is_duplicate_order_book_unified(
+        self, db, asset_id: int, bids: List, asks: List
+    ) -> bool:
+        """
+        Check if the current order book is identical to the most recent one using unified table.
+
+        Args:
+            db: Database session
+            asset_id: Asset ID
+            bids: List of bid levels
+            asks: List of ask levels
+
+        Returns:
+            True if this order book is identical to the last one, False otherwise
+        """
+        try:
+            # Get the most recent snapshot for this asset
+            last_snapshot_id = (
+                db.query(OrderBook.snapshot_id)
+                .filter(OrderBook.asset_id == asset_id)
+                .order_by(OrderBook.snapshot_id.desc())
+                .first()
+            )
+
+            if not last_snapshot_id:
+                # No previous snapshot, this is not a duplicate
+                return False
+
+            # Get all levels from the last snapshot
+            last_levels = (
+                db.query(OrderBook)
+                .filter(OrderBook.asset_id == asset_id)
+                .filter(OrderBook.snapshot_id == last_snapshot_id[0])
+                .all()
+            )
+
+            # Create a set of current bid/ask data for comparison
+            current_levels = set()
+
+            # Process current bids
+            for rank, bid in enumerate(bids, 1):
+                if isinstance(bid, dict):
+                    price = bid.get("price")
+                    quantity = bid.get("quantity")
+                    total = bid.get("total")
+                else:
+                    price = bid[0] if len(bid) > 0 else None
+                    quantity = bid[1] if len(bid) > 1 else None
+                    total = None
+
+                if price is not None and quantity is not None:
+                    current_levels.add(
+                        (
+                            "bid",
+                            rank,
+                            str(price),
+                            str(quantity),
+                            str(total) if total else None,
+                        )
+                    )
+
+            # Process current asks
+            for rank, ask in enumerate(asks, 1):
+                if isinstance(ask, dict):
+                    price = ask.get("price")
+                    quantity = ask.get("quantity")
+                    total = ask.get("total")
+                else:
+                    price = ask[0] if len(ask) > 0 else None
+                    quantity = ask[1] if len(ask) > 1 else None
+                    total = None
+
+                if price is not None and quantity is not None:
+                    current_levels.add(
+                        (
+                            "ask",
+                            rank,
+                            str(price),
+                            str(quantity),
+                            str(total) if total else None,
+                        )
+                    )
+
+            # Create a set of previous levels for comparison using display values
+            previous_levels = set()
+
+            for level in last_levels:
+                # Use the pre-calculated display values for comparison
+                cumulative_display = (
+                    str(level.cumulative_display) if level.cumulative_display else None
+                )
+
+                previous_levels.add(
+                    (
+                        level.side,
+                        level.level_rank,
+                        str(level.price_display),
+                        str(level.quantity_display),
+                        cumulative_display,
+                    )
+                )
+
+            # Compare the two sets
+            is_duplicate = current_levels == previous_levels
+
+            if is_duplicate:
+                logger.debug(
+                    f"Duplicate order book detected (last snapshot: {last_snapshot_id[0]})"
+                )
+            else:
+                logger.debug(
+                    f"Order book changed from last snapshot {last_snapshot_id[0]}"
+                )
+                logger.debug(
+                    f"Current levels: {len(current_levels)}, Previous levels: {len(previous_levels)}"
+                )
+
+            return is_duplicate
+
+        except Exception as e:
+            logger.error(f"Error checking for duplicate order book: {e}", exc_info=True)
+            # If we can't check, assume it's not a duplicate and save it
+            return False
 
     async def _handle_trade_update(self, data: Dict[str, Any]) -> None:
         """
