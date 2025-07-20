@@ -70,6 +70,7 @@ class WebSocketClient:
         self.health_monitor_task: Optional[asyncio.Task] = None
         self.heartbeat_task: Optional[asyncio.Task] = None
         self.metrics_task: Optional[asyncio.Task] = None
+        self.listen_task: Optional[asyncio.Task] = None
 
         # Metrics tracking
         self.metrics = get_metrics_tracker()
@@ -118,8 +119,11 @@ class WebSocketClient:
                         )
                     )
 
-                # Start listening for messages
-                await self._listen()
+                # Start listening for messages as a background task
+                self.listen_task = asyncio.create_task(self._listen())
+
+                # Return after setting up the connection
+                return
 
             except (ConnectionRefusedError, OSError) as e:
                 logger.error("Connection refused, will retry", error=str(e))
@@ -159,6 +163,13 @@ class WebSocketClient:
             self.metrics_task.cancel()
             try:
                 await self.metrics_task
+            except asyncio.CancelledError:
+                pass
+
+        if self.listen_task and not self.listen_task.done():
+            self.listen_task.cancel()
+            try:
+                await self.listen_task
             except asyncio.CancelledError:
                 pass
 
@@ -413,7 +424,7 @@ class WebSocketClient:
                 # Create bid/ask record
                 bidask = BidAsk(
                     asset_id=asset.id,
-                    exchange_timestamp=Decimal(str(data.get("timestamp", time.time()))),
+                    exchange_timestamp=Decimal(str(time.time())),
                     bid_price_amount=asset.to_base_price(best_bid["price"]),
                     ask_price_amount=asset.to_base_price(best_ask["price"]),
                     bid_size_amount=asset.to_base_size(best_bid["quantity"]),

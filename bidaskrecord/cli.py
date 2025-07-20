@@ -1,6 +1,7 @@
 """Command-line interface for the Bid-Ask Recorder."""
 
 import asyncio
+import os
 import signal
 from typing import List, Optional
 
@@ -51,18 +52,23 @@ def record(ctx: click.Context, symbols: List[str], daemon: bool) -> None:
 
     # Create and run the WebSocket client
     async def run() -> None:
+        pid = os.getpid()
+        logger.info(f"Starting bid-ask recorder (PID: {pid})")
+
         client = WebSocketClient(
             websocket_url=settings.WEBSOCKET_URL,
             reconnect_delay=settings.WEBSOCKET_RECONNECT_DELAY,
             max_retries=settings.WEBSOCKET_MAX_RETRIES,
         )
 
-        # Set up signal handlers
+        # Set up signal handlers with PID reporting
+        def shutdown_handler():
+            logger.info(f"Shutdown signal received (PID: {pid})")
+            asyncio.create_task(client.disconnect())
+
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(
-                sig, lambda: asyncio.create_task(client.disconnect())
-            )
+            loop.add_signal_handler(sig, shutdown_handler)
 
         try:
             # Connect and subscribe to symbols
@@ -75,11 +81,12 @@ def record(ctx: click.Context, symbols: List[str], daemon: bool) -> None:
                 await asyncio.sleep(1)
 
         except asyncio.CancelledError:
-            logger.info("Shutting down...")
+            logger.info(f"Shutting down gracefully (PID: {pid})")
         except Exception as e:
             logger.error("Error in WebSocket client", error=str(e), exc_info=True)
         finally:
             await client.disconnect()
+            logger.info(f"Recorder stopped (PID: {pid})")
 
     try:
         if daemon:
@@ -90,7 +97,7 @@ def record(ctx: click.Context, symbols: List[str], daemon: bool) -> None:
         else:
             asyncio.run(run())
     except KeyboardInterrupt:
-        logger.info("Recording stopped by user")
+        logger.info(f"Recording stopped by user (PID: {os.getpid()})")
     except Exception as e:
         logger.critical("Fatal error", error=str(e), exc_info=True)
         raise click.Abort()
